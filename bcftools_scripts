@@ -7,6 +7,7 @@ conda activate genome-tools
 #check bcftools availability
 bcftools --version
 
-
-
-
+#refer to 'https://samtools.github.io/bcftools/howtos/roh-calling.html' and maybe 'https://github.com/samtools/BCFtools' /RoH for origin of roh calculation
+#need "input VCF with FORMAT columns containing either genotype likelihoods (PL) or genotypes (GT). By default, genotype likelihoods are expected unless the -G option is provided"
+#to calculate allele frequencies, I will be using the whole dataset as one population(?), so not relying on genotype likelihood, input '-G'
+#no --genetic-map or --rec-rate
