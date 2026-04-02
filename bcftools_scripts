@@ -1,0 +1,12 @@
+#preliminary things
+#sign in 'ssh'
+#cd to directory
+#activate conda environment 'genome-tools'
+conda activate genome-tools
+
+#check bcftools availability
+bcftools --version
+
+
+
+
