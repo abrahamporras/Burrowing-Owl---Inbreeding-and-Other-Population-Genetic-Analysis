@@ -107,6 +107,10 @@ bcftools index autosomes.vcf.gz
 #check Z is gone
 bcftools view -r NC_134076.1 autosomes.vcf.gz | head
 
+
+
+
+####NOT SURE IF THIS RAN PROPERLY BECASUE SESSION ENDED....
 ###add allele frequency tag
 bcftools +fill-tags autosomes.vcf.gz -Oz -o autosomes.af.vcf.gz -- -t AF
 bcftools index autosomes.af.vcf.gz
