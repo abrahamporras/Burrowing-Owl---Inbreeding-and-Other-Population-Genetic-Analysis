@@ -109,10 +109,12 @@ bcftools view -r NC_134076.1 autosomes.vcf.gz | head
 
 ###add allele frequency tag
 bcftools +fill-tags autosomes.vcf.gz -Oz -o autosomes.af.vcf.gz -- -t AF
-
-
-
 bcftools index autosomes.af.vcf.gz
+
+
+
+
+
 
 ###RUN ROH
 bcftools roh -G --AF-tag AF --rec-rate 1e-8 autosomes.af.vcf.gz > roh.txt
@@ -163,9 +165,6 @@ awk '{
 }' pop_froh_summary.txt > pop_froh_final.txt
 
 ###RESULTS WILL BE IN 'pop_froh_final.txt'
-
-
-
 
 
 #want to check snps per contig to see smaller contigs that are candidate W
