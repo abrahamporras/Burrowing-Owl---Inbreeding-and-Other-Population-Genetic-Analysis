@@ -13,7 +13,6 @@ bcftools --version
 ###current dir: /home/porr1330/bcftools_work
 
 ###MAKING SUBSET ID VCF
-
 #assign vcf
 VCF="/home/barr7596/BUOW/BUOW.all.rm_rel1.2mind.biallelic.SNP.maf05.8miss.vcf.gz"
 
@@ -49,38 +48,69 @@ END {
   }
 }' > sample_missingness.txt
 
-
-
 #filter out samples with high missingness (10%)
 awk '$2 <= 0.1 {print $1}' sample_missingness.txt > keep_samples.txt
-wc -l keep_samples.txt
+wc -l keep_samples.txt 
+#'128'
 
 #subset again to remove high missingness samples
-bcftools view -S keep_samples.txt \
-  -Oz -o clean.vcf.gz subset.vcf.gz
+bcftools view -S keep_samples.txt -Oz -o clean.vcf.gz subset.vcf.gz
 
 bcftools index clean.vcf.gz
 
 ###ID Z chromosome
-
 #convert to bed for PLINK
-plink --vcf clean.vcf.gz --make-bed --out tmp
+plink --vcf clean.vcf.gz --make-bed --allow-extra-chr --out tmp
+
+bcftools query -f '%CHROM\n' clean.vcf.gz | sort | uniq -c | sort -nr > snp_counts.txt
 
 #loop
-for chr in $(cut -f2 snp_counts.txt); do
-  plink --bfile tmp --chr $chr --het --out het_$chr
+for chr in $(awk '{print $2}' snp_counts.txt); do
+  plink --bfile tmp --chr $chr --het --allow-extra-chr --out het_$chr
 done
 
+#heterozygosity by contig loop
+for f in het_*.het; do
+  awk 'NR>1 {
+    sum+=$6;
+    sumsq+=$6*$6;
+    n++
+  }
+  END {
+    mean=sum/n;
+    var=(sumsq/n)-(mean*mean);
+    print FILENAME, mean, var
+  }' $f
+done | sort -k3 -nr > het_variance_summary.txt
+
+grep "het_NC_" het_variance_summary.txt | sort -k3 -nr | head
+
 #Z will be a large contig, and with heterozygosity near 0 in subset. Save this
-echo "NC_1340XX.X" > sex_chr.txt
+echo "NC_134076.1" > sex_chr.txt
+
+#keep chromosome-level contigs
+awk '$2 ~ /^NC_/ {print $2}' snp_counts.txt > nc_contigs.txt
+bcftools view -t $(paste -sd, nc_contigs.txt) clean.vcf.gz -Oz -o chrom_only.vcf.gz
+bcftools index chrom_only.vcf.gz
 
 ###REMOVE Z CHROMOSOME
-bcftools view -T ^sex_chr.txt clean.vcf.gz -Oz -o autosomes.vcf.gz
-
+bcftools view -T ^sex_chr.txt chrom_only.vcf.gz -Oz -o autosomes.vcf.gz
 bcftools index autosomes.vcf.gz
+
+#should return nothing:
+bcftools view -h autosomes.vcf.gz | grep NC_134076.1
+#something there failed. run this:
+Z=$(cat sex_chr.txt)
+bcftools view -t "^$Z" chrom_only.vcf.gz -Oz -o autosomes.vcf.gz
+bcftools index autosomes.vcf.gz
+
+#check Z is gone
+bcftools view -r NC_134076.1 autosomes.vcf.gz | head
 
 ###add allele frequency tag
 bcftools +fill-tags autosomes.vcf.gz -Oz -o autosomes.af.vcf.gz -- -t AF
+
+
 
 bcftools index autosomes.af.vcf.gz
 
