@@ -1,3 +1,6 @@
+###one idea for the code: get everyehing running and make a cheat sheet for this workflow, hand over the data with useful tips for collaborators; its like making currciculum
+###to teach code and programs
+
 #preliminary things
 #bring in buow population csv file
 scp "C:\Users\Owner\Downloads\SP26\BARR\BUOW\buow_withpop.csv" porr1330@khaleen.csumb.edu:/home/porr1330/bcftools_work/
