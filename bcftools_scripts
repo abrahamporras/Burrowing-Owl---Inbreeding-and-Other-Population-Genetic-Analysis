@@ -127,14 +127,33 @@ bcftools index -f autosomes.af.vcf.gz
 #check progress
 pgrep -a bcftools
 
+
+
+
 #confirm allele frequency values
 bcftools view -h autosomes.af.vcf.gz | head
 bcftools query -f '%INFO/AF\n' autosomes.af.vcf.gz | head
 
 
 
+#decided I will run the rest in a batch job
 
-###RUN ROH
+#open a script file
+nano prelim_froh_pipe.sh
+
+####INSIDE SCRIPT FILE#######
+
+#!/bin/bash
+#SBATCH --job-name=froh
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=8G
+#SBATCH --time=04:00:00
+#SBATCH -o froh_%j.out
+#SBATCH -e froh_%j.err
+
+set -euo pipefail
+
+### RUN ROH
 bcftools roh -G --AF-tag AF --rec-rate 1e-8 autosomes.af.vcf.gz > roh.txt
 
 ###ROH Per Individual
@@ -144,7 +163,7 @@ awk '$1=="RG"{sum[$2]+=$6} END{for (i in sum) print i, sum[i]}' roh.txt > roh_to
 #Determine genome length
 bcftools index -n autosomes.vcf.gz
 
-#DEFINE GENOME LENGTH
+#DEFINE GENOME LENGTH (MUST ME DEFINED MANUALLY!!!!)
 GENOME_BP=
 
 #run and extract froh
@@ -153,8 +172,10 @@ awk -v G=$GENOME_BP '{print $1, $2/G}' roh_total_bp.txt > froh.txt
 ###extract IDs and populations again
 cut -d',' -f1,2 buow_withpop.csv | tail -n +2 | sed 's/,/ /g' > id_pop.txt
 
-###merge the the froh extimates with population tied to ID
-join <(sort froh.txt) <(sort id_pop.txt) > froh_with_pop.txt
+### JOIN (no process substitution)
+sort froh.txt > froh.sorted.txt
+sort id_pop.txt > id_pop.sorted.txt
+join froh.sorted.txt id_pop.sorted.txt > froh_with_pop.txt
 
 ###POPULATION LEVEL SUMMARY
 awk '{
@@ -175,20 +196,16 @@ END {
 
 ###ADD '*' TO FLAG POPULATIONS SMALLER THAN 5
 awk '{
-  if ($2 < 5) {
-    print $1"*", $2, $3, $4
-  } else {
-    print $1, $2, $3, $4
-  }
+  if ($2 < 5) print $1"*", $2, $3, $4;
+  else print $1, $2, $3, $4;
 }' pop_froh_summary.txt > pop_froh_final.txt
+
+#save and exit
+
+######OUTSIDE OF SCRIPT FILE#######
+
+###run script
+sbatch prelim_froh_pipe.sh
 
 ###RESULTS WILL BE IN 'pop_froh_final.txt'
 
-
-#want to check snps per contig to see smaller contigs that are candidate W
-bcftools query -f '%CHROM\n' buow_subset.vcf.gz | sort | uniq -c > snp_counts_per_contig.txt
-
-#refer to 'https://samtools.github.io/bcftools/howtos/roh-calling.html' and maybe 'https://github.com/samtools/BCFtools' /RoH for origin of roh calculation
-#need "input VCF with FORMAT columns containing either genotype likelihoods (PL) or genotypes (GT). By default, genotype likelihoods are expected unless the -G option is provided"
-#to calculate allele frequencies, I will be using the whole dataset as one population(?), so not relying on genotype likelihood, input '-G'
-#no --genetic-map or --rec-rate
