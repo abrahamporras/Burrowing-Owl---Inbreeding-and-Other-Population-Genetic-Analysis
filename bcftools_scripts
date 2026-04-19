@@ -110,15 +110,26 @@ bcftools index autosomes.vcf.gz
 #check Z is gone
 bcftools view -r NC_134076.1 autosomes.vcf.gz | head
 
-
-
-
 ####NOT SURE IF THIS RAN PROPERLY BECASUE SESSION ENDED....
-###add allele frequency tag
+###add allele frequency tag 
 bcftools +fill-tags autosomes.vcf.gz -Oz -o autosomes.af.vcf.gz -- -t AF
 bcftools index autosomes.af.vcf.gz
 
+#later; came back to wipe the products of those last two lines of code to rerun and make sure it doesnt affect it
+rm -f autosomes.af.vcf.gz autosomes.af.vcf.gz.csi
 
+###add allele frequency tag and index; run in background and use 'nohup to submit job so it doesn't end if I get signed off
+nohup bash -c '
+bcftools +fill-tags autosomes.vcf.gz -Oz -o autosomes.af.vcf.gz -- -t AF &&
+bcftools index -f autosomes.af.vcf.gz
+' > filltags.log 2>&1 &
+
+#check progress
+pgrep -a bcftools
+
+#confirm allele frequency values
+bcftools view -h autosomes.af.vcf.gz | head
+bcftools query -f '%INFO/AF\n' autosomes.af.vcf.gz | head
 
 
 
