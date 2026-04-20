@@ -218,33 +218,61 @@ nano detect_z_chr.sh
 #####IN SCRIPT
 
 #!/bin/bash
-set -euo pipefail
+
+set -u
+# IMPORTANT: do NOT use -e or pipefail (this was causing early exits)
 
 VCF="clean.vcf.gz"
 
-# convert to plink
-plink --vcf $VCF --make-bed --allow-extra-chr --out tmp
+#####################################
+# 1. Convert VCF → PLINK
+#####################################
+plink --vcf "$VCF" --make-bed --allow-extra-chr --out tmp
 
-# SNP counts per contig
-bcftools query -f '%CHROM\n' $VCF | sort | uniq -c | sort -nr > snp_counts.txt
+#####################################
+# 2. SNP counts per contig
+#####################################
+bcftools query -f '%CHROM\n' "$VCF" | sort | uniq -c | sort -nr > snp_counts.txt
 
-# heterozygosity per contig
-awk '$2 ~ /^NC_/ && $1 > 50 {print $2}' snp_counts.txt | while read chr; do
-  plink --bfile tmp --chr $chr --het --allow-extra-chr --out het_$chr
+#####################################
+# 3. Heterozygosity per contig (SAFE LOOP)
+#####################################
+
+for chr in $(awk '$2 ~ /^NC_/ && $1 > 50 {print $2}' snp_counts.txt); do
+
+  echo "Processing $chr"
+
+  plink --bfile tmp \
+        --chr "$chr" \
+        --het \
+        --allow-extra-chr \
+        --out "het_$chr" \
+  || {
+      echo "WARNING: PLINK failed on $chr — skipping"
+      continue
+  }
+
 done
 
-# summarize heterozygosity
-for f in het_*.het; do
+#####################################
+# 4. Summarize heterozygosity
+#####################################
+
+ls het_*.het 2>/dev/null | while read f; do
+
   awk 'NR>1 {
     sum+=$6;
     sumsq+=$6*$6;
     n++
   }
   END {
-    mean=sum/n;
-    var=(sumsq/n)-(mean*mean);
-    print FILENAME, mean, var
-  }' $f
+    if (n > 0) {
+      mean=sum/n;
+      var=(sumsq/n)-(mean*mean);
+      print FILENAME, mean, var
+    }
+  }' "$f"
+
 done | sort -k2,2n > het_summary.txt
 
 ########SAVE AND EXIT AND RUN
