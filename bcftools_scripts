@@ -127,57 +127,39 @@ bcftools index -f autosomes.af.vcf.gz
 #check progress
 pgrep -a bcftools
 
-
-
-
 #confirm allele frequency values
 bcftools view -h autosomes.af.vcf.gz | head
 bcftools query -f '%INFO/AF\n' autosomes.af.vcf.gz | head
 
-
-
-#decided I will run the rest in a batch job
+#decided I will run the rest in a script
 
 #open a script file
 nano prelim_froh_pipe.sh
 
 ####INSIDE SCRIPT FILE#######
-
 #!/bin/bash
-#SBATCH --job-name=froh
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=8G
-#SBATCH --time=04:00:00
-#SBATCH -o froh_%j.out
-#SBATCH -e froh_%j.err
-
 set -euo pipefail
 
 ### RUN ROH
-bcftools roh -G --AF-tag AF --rec-rate 1e-8 autosomes.af.vcf.gz > roh.txt
+bcftools roh --AF-tag AF --rec-rate 1e-8 autosomes.af.vcf.gz > roh.txt
 
-###ROH Per Individual
+### ROH per individual
 awk '$1=="RG"{sum[$2]+=$6} END{for (i in sum) print i, sum[i]}' roh.txt > roh_total_bp.txt
 
-###COMPUTE FROH
-#Determine genome length
-bcftools index -n autosomes.vcf.gz
+### COMPUTE FROH
+GENOME_BP=1355857592
 
-#DEFINE GENOME LENGTH (MUST ME DEFINED MANUALLY!!!!)
-GENOME_BP=
-
-#run and extract froh
 awk -v G=$GENOME_BP '{print $1, $2/G}' roh_total_bp.txt > froh.txt
 
-###extract IDs and populations again
+### ID + population
 cut -d',' -f1,2 buow_withpop.csv | tail -n +2 | sed 's/,/ /g' > id_pop.txt
 
-### JOIN (no process substitution)
+### SAFE JOIN
 sort froh.txt > froh.sorted.txt
 sort id_pop.txt > id_pop.sorted.txt
 join froh.sorted.txt id_pop.sorted.txt > froh_with_pop.txt
 
-###POPULATION LEVEL SUMMARY
+### POP summary
 awk '{
   pop=$3;
   val=$2;
@@ -194,7 +176,7 @@ END {
   }
 }' froh_with_pop.txt > pop_froh_summary.txt
 
-###ADD '*' TO FLAG POPULATIONS SMALLER THAN 5
+### FLAG SMALL GROUPS
 awk '{
   if ($2 < 5) print $1"*", $2, $3, $4;
   else print $1, $2, $3, $4;
@@ -214,4 +196,141 @@ exit
 
 #download txt file
 scp porr1330@khaleen.csumb.edu:/home/porr1330/bcftools_work/pop_froh_final.txt C:/Users/Owner/Downloads/SP26/BARR/BUOW
+
+
+
+####################################################################################################################################
+
+
+
+########IT IS VERY LIKELY WE GOT THE WRONG CONTIG FOR Z FILTERING. WE NEED TO REDO THIS
+grep "het_NC_" het_variance_summary.txt | sort -k3 -nr | head
+sort -k2,2n het_variance_summary.txt | head
+grep "het_NC_" het_variance_summary.txt | sort -k2,2n
+grep -E "NC_134074.1|NC_134068.1|NC_134072.1|NC_134069.1" snp_counts.txt
+
+#"   1632 NC_134068.1     1497 NC_134072.1    427 NC_134074.1    412 NC_134069.1    "
+#MOST LIKELY Z CHROMOSOME IS NC_134068.1
+
+#create Z detection script
+nano detect_z_chr.sh
+
+#####IN SCRIPT
+
+#!/bin/bash
+set -euo pipefail
+
+VCF="clean.vcf.gz"
+
+# convert to plink
+plink --vcf $VCF --make-bed --allow-extra-chr --out tmp
+
+# SNP counts per contig
+bcftools query -f '%CHROM\n' $VCF | sort | uniq -c | sort -nr > snp_counts.txt
+
+# heterozygosity per contig
+awk '$2 ~ /^NC_/ && $1 > 50 {print $2}' snp_counts.txt | while read chr; do
+  plink --bfile tmp --chr $chr --het --allow-extra-chr --out het_$chr
+done
+
+# summarize heterozygosity
+for f in het_*.het; do
+  awk 'NR>1 {
+    sum+=$6;
+    sumsq+=$6*$6;
+    n++
+  }
+  END {
+    mean=sum/n;
+    var=(sumsq/n)-(mean*mean);
+    print FILENAME, mean, var
+  }' $f
+done | sort -k2,2n > het_summary.txt
+
+########SAVE AND EXIT AND RUN
+nohup bash detect_z_chr.sh > z_detect.log 2>&1 &
+
+#inspect contigs with lowest heterozygosity ("NC")
+sort -k2,2n het_summary.txt | head
+
+#Check for the largest SNP count in those contigs (CHANGE THIS)
+grep -E "NC_134074.1|NC_134068.1|NC_134072.1|NC_134069.1" snp_counts.txt
+
+#mark Z chromosome (CHANGE THIS)
+echo "NC_XXXXXX.X" > sex_chr.txt
+
+########FROH PIPELINE########
+nano prelim_froh_pipe.sh
+
+####IN SCRIPT
+#!/bin/bash
+set -euo pipefail
+
+VCF="/home/barr7596/BUOW/BUOW.all.rm_rel1.2mind.biallelic.SNP.maf05.8miss.vcf.gz"
+
+#subset
+bcftools view -S keep_samples.txt -Oz -o clean.vcf.gz $VCF
+bcftools index clean.vcf.gz
+
+# PLINK
+plink --vcf clean.vcf.gz --make-bed --allow-extra-chr --out tmp
+
+#SNP counts (needed for Z removal step consistency)
+bcftools query -f '%CHROM\n' clean.vcf.gz | \
+sort | uniq -c | sort -nr > snp_counts.txt
+
+#keep only chromosome contigs
+awk '$2 ~ /^NC_/ {print $2}' snp_counts.txt > nc_contigs.txt
+
+bcftools view -t $(paste -sd, nc_contigs.txt) clean.vcf.gz -Oz -o chrom_only.vcf.gz
+bcftools index chrom_only.vcf.gz
+
+#remove Z(imanually assigned input file from earlier)
+Z=$(cat sex_chr.txt)
+
+bcftools view -t "^$Z" chrom_only.vcf.gz -Oz -o autosomes.vcf.gz
+bcftools index autosomes.vcf.gz
+
+#add allele frequencies
+bcftools +fill-tags autosomes.vcf.gz -Oz -o autosomes.af.vcf.gz -- -t AF
+bcftools index autosomes.af.vcf.gz
+
+#ROH calculation
+bcftools roh --AF-tag AF --rec-rate 1e-8 autosomes.af.vcf.gz > roh.txt
+awk '$1=="RG"{sum[$2]+=$5} END{for (i in sum) print i, sum[i]}' roh.txt > roh_total_bp.txt
+
+#FROH calculation
+GENOME_BP=1355857592
+awk -v G=$GENOME_BP '{print $1, $2/G}' roh_total_bp.txt > froh.txt
+
+#merge populations
+cut -d',' -f1,2 buow_withpop.csv | tail -n +2 | sed 's/,/ /g' > id_pop.txt
+sort froh.txt > froh.sorted.txt
+sort id_pop.txt > id_pop.sorted.txt
+join froh.sorted.txt id_pop.sorted.txt > froh_with_pop.txt
+
+#summarize froh values
+awk '{
+  pop=$3;
+  val=$2;
+  sum[pop]+=val;
+  sumsq[pop]+=val*val;
+  count[pop]+=1
+}
+END {
+  for (p in sum) {
+    mean=sum[p]/count[p];
+    var=(sumsq[p]/count[p])-(mean*mean);
+    sd=sqrt(var);
+    print p, count[p], mean, sd
+  }
+}' froh_with_pop.txt > pop_froh_summary.txt
+
+awk '{
+  if ($2 < 5) print $1"*", $2, $3, $4;
+  else print $1, $2, $3, $4;
+}' pop_froh_summary.txt > pop_froh_final.txt
+
+###SAVE EXIT AND RUN
+nohup bash prelim_froh_pipe.sh > froh_pipeline.log 2>&1 &
 
