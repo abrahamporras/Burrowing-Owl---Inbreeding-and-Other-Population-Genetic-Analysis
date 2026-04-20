@@ -209,3 +209,9 @@ sbatch prelim_froh_pipe.sh
 
 ###RESULTS WILL BE IN 'pop_froh_final.txt'
 
+#exit server
+exit
+
+#download txt file
+scp porr1330@khaleen.csumb.edu:/home/porr1330/bcftools_work/pop_froh_final.txt C:/Users/Owner/Downloads/SP26/BARR/BUOW
+
