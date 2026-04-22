@@ -1,0 +1,151 @@
+##############################################
+### PRELIM SETUP (ALREADY DONE)
+##############################################
+
+# VCF path
+VCF="/home/barr7596/BUOW/BUOW.all.rm_rel1.2mind.biallelic.SNP.maf05.8miss.vcf.gz"
+
+##############################################
+### SAMPLE SUBSETTING
+##############################################
+
+# extract VCF sample IDs
+bcftools query -l $VCF > vcf_samples.txt
+
+# extract metadata IDs
+cut -d',' -f1 buow_withpop.csv | tail -n +2 > metadata_ids.txt
+
+# intersect IDs
+grep -Ff metadata_ids.txt vcf_samples.txt > sample_ids.txt
+
+# subset VCF
+bcftools view -S sample_ids.txt -Oz -o subset.vcf.gz $VCF
+bcftools index subset.vcf.gz
+
+##############################################
+### FILTER HIGH MISSINGNESS SAMPLES
+##############################################
+
+# compute missingness per sample
+bcftools query -f '[%SAMPLE\t%GT\n]' subset.vcf.gz | \
+awk '{
+  total[$1]++;
+  if ($2=="./.") miss[$1]++;
+}
+END {
+  for (s in total) {
+    m = (miss[s] ? miss[s] : 0) / total[s];
+    print s, m
+  }
+}' > sample_missingness.txt
+
+# keep samples <=10% missing
+awk '$2 <= 0.1 {print $1}' sample_missingness.txt > keep_samples.txt
+
+# subset again
+bcftools view -S keep_samples.txt -Oz -o clean.vcf.gz subset.vcf.gz
+bcftools index clean.vcf.gz
+
+##############################################
+### KEEP CHROMOSOME-LEVEL CONTIGS ONLY
+##############################################
+
+# list contigs + SNP counts
+bcftools query -f '%CHROM\n' clean.vcf.gz | sort | uniq -c | sort -nr > snp_counts.txt
+
+# keep only NC (chromosome-level)
+awk '$2 ~ /^NC_/ {print $2}' snp_counts.txt > nc_contigs.txt
+
+# subset to chromosomes only
+bcftools view -t $(paste -sd, nc_contigs.txt) clean.vcf.gz -Oz -o chrom_only.vcf.gz
+bcftools index chrom_only.vcf.gz
+
+##############################################
+### REMOVE Z CHROMOSOME (CONFIRMED)
+##############################################
+
+# confirmed Z chromosome from mentor
+echo "NC_134077.1" > sex_chr.txt
+
+# remove Z
+Z=$(cat sex_chr.txt)
+
+bcftools view -t "^$Z" chrom_only.vcf.gz -Oz -o autosomes.vcf.gz
+bcftools index autosomes.vcf.gz
+
+# verify Z removed (should return nothing)
+bcftools view -r NC_134077.1 autosomes.vcf.gz | head
+
+##############################################
+### ADD ALLELE FREQUENCY TAG (BACKGROUND SAFE)
+##############################################
+
+rm -f autosomes.af.vcf.gz autosomes.af.vcf.gz.csi
+
+nohup bash -c '
+bcftools +fill-tags autosomes.vcf.gz -Oz -o autosomes.af.vcf.gz -- -t AF &&
+bcftools index -f autosomes.af.vcf.gz
+' > filltags.log 2>&1 &
+
+##############################################
+### ROH + FROH PIPELINE SCRIPT
+##############################################
+
+nano froh_pipe.sh
+
+##### INSIDE SCRIPT #####
+#!/bin/bash
+set -euo pipefail
+
+### RUN ROH
+bcftools roh --AF-tag AF --rec-rate 1e-8 autosomes.af.vcf.gz > roh.txt
+
+### ROH PER INDIVIDUAL
+awk '$1=="RG"{sum[$2]+=$6} END{for (i in sum) print i, sum[i]}' roh.txt > roh_total_bp.txt
+
+### COMPUTE FROH
+# NOTE: genome size includes Z; acceptable if documented
+GENOME_BP=1355857592
+
+awk -v G=$GENOME_BP '{print $1, $2/G}' roh_total_bp.txt > froh.txt
+
+### MERGE WITH POPULATION DATA
+cut -d',' -f1,2 buow_withpop.csv | tail -n +2 | sed 's/,/ /g' > id_pop.txt
+
+sort froh.txt > froh.sorted.txt
+sort id_pop.txt > id_pop.sorted.txt
+join froh.sorted.txt id_pop.sorted.txt > froh_with_pop.txt
+
+### POPULATION SUMMARY
+awk '{
+  pop=$3;
+  val=$2;
+  sum[pop]+=val;
+  sumsq[pop]+=val*val;
+  count[pop]+=1
+}
+END {
+  for (p in sum) {
+    mean=sum[p]/count[p];
+    var=(sumsq[p]/count[p])-(mean*mean);
+    sd=sqrt(var);
+    print p, count[p], mean, sd
+  }
+}' froh_with_pop.txt > pop_froh_summary.txt
+
+### FLAG SMALL GROUPS
+awk '{
+  if ($2 < 5) print $1"*", $2, $3, $4;
+  else print $1, $2, $3, $4;
+}' pop_froh_summary.txt > pop_froh_final.txt
+
+##### OUTSIDE SCRIPT #####
+
+# run in background-safe way
+nohup bash froh_pipe.sh > froh.log 2>&1 &
+
+##############################################
+### DOWNLOAD RESULTS
+##############################################
+
+scp porr1330@khaleen.csumb.edu:/home/porr1330/bcftools_work/pop_froh_final.txt C:/Users/Owner/Downloads/SP26/BARR/BUOW
