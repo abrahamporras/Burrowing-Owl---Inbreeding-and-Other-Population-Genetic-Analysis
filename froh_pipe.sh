@@ -18,7 +18,6 @@ sed 's/.*length=//' | sed 's/>//' | \
 awk '{sum += $1} END {print sum}' > genome_bp.txt
 
 GENOME_BP=$(cat genome_bp.txt)
-GENOME_BP=1355857592
 
 ### COMPUTE FROH
 awk -v G=$GENOME_BP '{print $1, $2/G}' roh_total_bp.txt > froh.txt
