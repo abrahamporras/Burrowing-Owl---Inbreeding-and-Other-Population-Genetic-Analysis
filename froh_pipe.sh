@@ -7,10 +7,20 @@ bcftools roh --AF-tag AF --rec-rate 1e-8 autosomes.af.vcf.gz > roh.txt
 ### ROH PER INDIVIDUAL
 awk '$1=="RG"{sum[$2]+=$6} END{for (i in sum) print i, sum[i]}' roh.txt > roh_total_bp.txt
 
-### COMPUTE FROH
-# NOTE: genome size includes Z; acceptable if documented
+###COMPUTE GENOME LENGTH
+# compute autosomal genome length (sum of contig lengths in header, excluding Z)
+Z=$(cat sex_chr.txt)
+
+bcftools view -h autosomes.vcf.gz | \
+grep '^##contig' | \
+grep -v "$Z" | \
+sed 's/.*length=//' | sed 's/>//' | \
+awk '{sum += $1} END {print sum}' > genome_bp.txt
+
+GENOME_BP=$(cat genome_bp.txt)
 GENOME_BP=1355857592
 
+### COMPUTE FROH
 awk -v G=$GENOME_BP '{print $1, $2/G}' roh_total_bp.txt > froh.txt
 
 ### MERGE WITH POPULATION DATA
