@@ -85,19 +85,22 @@ bcftools index autosomes.vcf.gz
 # verify Z removed (should return nothing)
 bcftools view -r NC_134077.1 autosomes.vcf.gz | head
 
-### ADD ALLELE FREQUENCY TAG (BACKGROUND SAFE)
+### ADD ALLELE FREQUENCY TAG (BACKGROUND SAFE) AND
+### ROH + FROH PIPELINE SCRIPT ('froh_pipe.sh')
+
 
 rm -f autosomes.af.vcf.gz autosomes.af.vcf.gz.csi
 
 nohup bash -c '
 bcftools +fill-tags autosomes.vcf.gz -Oz -o autosomes.af.vcf.gz -- -t AF &&
-bcftools index -f autosomes.af.vcf.gz
-' > filltags.log 2>&1 &
+bcftools index -f autosomes.af.vcf.gz &&
+bash froh_pipe.sh
+' > full_pipeline.log 2>&1 &
 
-### ROH + FROH PIPELINE SCRIPT ('froh_pipe.sh')
-# run in background-safe way
-nohup bash froh_pipe.sh > froh.log 2>&1 &
+### RUN TO CHECK PROGRESS
+pgrep -af bcftools
+pgrep -af froh_pipe.sh
 
+### ONCE NOTHING IS RETURNED BY PREVIOUS TWO:
 ### DOWNLOAD RESULTS
-
 scp porr1330@khaleen.csumb.edu:/home/porr1330/bcftools_work/pop_froh_final.txt C:/Users/Owner/Downloads/SP26/BARR/BUOW
