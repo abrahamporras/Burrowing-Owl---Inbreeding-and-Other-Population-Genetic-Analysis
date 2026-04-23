@@ -35,6 +35,8 @@ grep -Ff metadata_ids.txt vcf_samples.txt > sample_ids.txt
 
 # subset VCF
 bcftools view -S sample_ids.txt -Oz -o subset.vcf.gz $VCF
+
+############## ABOVE HAS BEEN RUN ###################
 bcftools index subset.vcf.gz
 
 ### FILTER HIGH MISSINGNESS SAMPLES
