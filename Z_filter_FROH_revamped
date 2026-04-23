@@ -99,6 +99,15 @@ bcftools +fill-tags autosomes.vcf.gz -Oz -o autosomes.af.vcf.gz -- -t AF &&
 bcftools index -f autosomes.af.vcf.gz &&
 bash froh_pipe.sh
 ' > full_pipeline.log 2>&1 &
+#'[1] 3570196'
+
+#check progress
+pgrep -af bcftools
+pgrep -af froh_pipe.sh
+
+#'3570196 bash -c  bcftools +fill-tags autosomes.vcf.gz -Oz -o autosomes.af.vcf.gz -- -t AF && bcftools index -f autosomes.af.vcf.gz && bash froh_pipe.sh'
+#'3570197 bcftools +fill-tags autosomes.vcf.gz -Oz -o autosomes.af.vcf.gz -- -t AF'
+#'3570196 bash -c  bcftools +fill-tags autosomes.vcf.gz -Oz -o autosomes.af.vcf.gz -- -t AF && bcftools index -f autosomes.af.vcf.gz && bash froh_pipe.sh'
 
 ### RUN TO CHECK PROGRESS
 grep "done" full_pipeline.log
