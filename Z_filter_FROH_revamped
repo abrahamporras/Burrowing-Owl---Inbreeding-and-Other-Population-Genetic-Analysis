@@ -33,12 +33,12 @@ cut -d',' -f1 buow_withpop.csv | tail -n +2 > metadata_ids.txt
 # intersect IDs
 grep -Ff metadata_ids.txt vcf_samples.txt > sample_ids.txt
 
-############## ABOVE HAS BEEN RUN ###################
-
 # subset VCF
 bcftools view -S sample_ids.txt -Oz -o subset.vcf.gz $VCF
 
 bcftools index subset.vcf.gz
+
+#above complete as of 4/23/2026
 
 ### FILTER HIGH MISSINGNESS SAMPLES
 
