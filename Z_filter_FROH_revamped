@@ -90,11 +90,10 @@ bcftools view -r NC_134077.1 autosomes.vcf.gz | head
 
 ### ADD ALLELE FREQUENCY TAG (BACKGROUND SAFE) AND
 ### ROH + FROH PIPELINE SCRIPT ('froh_pipe.sh')
+#edit file and then save and exit
+nano froh_pipe.sh
 
-#removing previous; no need to do this since I've done it
-#rm -f autosomes.af.vcf.gz autosomes.af.vcf.gz.csi
-#rm -f roh.txt roh_total_bp.txt froh.txt froh_with_pop.txt pop_froh_*.txt
-
+#run script
 nohup bash -c '
 bcftools +fill-tags autosomes.vcf.gz -Oz -o autosomes.af.vcf.gz -- -t AF &&
 bcftools index -f autosomes.af.vcf.gz &&
