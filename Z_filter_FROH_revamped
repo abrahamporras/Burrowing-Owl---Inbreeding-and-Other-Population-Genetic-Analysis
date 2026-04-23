@@ -4,6 +4,21 @@ cd /home/porr1330/bcftools_work
 
 conda activate genome-tools
 
+#ran the following commented lines to remove old files; no need to do this
+# intermediate VCFs (safe to regenerate)
+#rm -f subset.vcf.gz subset.vcf.gz.csi
+#rm -f clean.vcf.gz clean.vcf.gz.csi
+#rm -f chrom_only.vcf.gz chrom_only.vcf.gz.csi
+#rm -f autosomes.vcf.gz autosomes.vcf.gz.csi
+#rm -f autosomes.af.vcf.gz autosomes.af.vcf.gz.csi
+
+# downstream outputs
+#rm -f roh.txt roh_total_bp.txt froh.txt
+#rm -f froh_with_pop.txt pop_froh_*.txt
+
+# logs
+#rm -f filltags.log froh.log
+
 # VCF path
 VCF="/home/barr7596/BUOW/BUOW.all.rm_rel1.2mind.biallelic.SNP.maf05.8miss.vcf.gz"
 
