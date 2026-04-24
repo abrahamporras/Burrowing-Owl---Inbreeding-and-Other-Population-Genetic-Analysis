@@ -3,37 +3,69 @@ scp C:/Users/Owner/Downloads/SP26/BARR/BUOW/CA_AZ_Vegas.samples.cov.master.csv p
 
 #ssh sign in and cd into directory '/home/porr1330/bcftools_work'
 
-### CURATE TIME DATA
+### START: BUILD CLEAN METADATA MAP 
 
-#extract date metadata
+### extract correct sample IDs from VCF (GROUND TRUTH)
+bcftools query -l autosomes.af.vcf.gz | sort > vcf_ids.txt
+
+### extract master metadata (SAFE PARSING)
+# KEEP ONLY: SampleName1 + CollectionDate
+
 awk -F',' 'NR>1 {
-  print $1, $7
-}' CA_AZ_Vegas.samples.cov.master.csv > id_date_raw.txt
+  gsub(/\r/,"",$0)
 
-#convert to the binary old and new categories (as suggested by Christen, 2019 is the cutoff)
-awk '{
-  split($2, d, "/")
+  id=$1
+  date=$7
+
+  # remove time portion (YYYY/MM/DD 00:00:00)
+  split(date, t, " ")
+  split(t[1], d, "/")
+
   year=d[1]
 
   if (year <= 2019) group="OLD"
   else group="NEW"
 
-  print $1, year, group
-}' id_date_raw.txt > id_time.txt
+  print id, year, group
+}' CA_AZ_Vegas.samples.cov.master.csv | sort > id_time_raw.txt
 
-### JOIN FROH RESULTS WITH TIME DATA
+### VALIDATE ID OVERLAP (for debug)
+cut -d' ' -f1 id_time_raw.txt | sort > meta_ids.txt
+
+comm -12 vcf_ids.txt meta_ids.txt > shared_ids.txt
+
+echo "VCF IDS:" $(wc -l < vcf_ids.txt)
+echo "METADATA IDS:" $(wc -l < id_time_raw.txt)
+echo "SHARED IDS:" $(wc -l < shared_ids.txt)
+
+### FILTER metadata to ONLY VCF samples
+awk 'NR==FNR {a[$1]; next} $1 in a' vcf_ids.txt id_time_raw.txt \
+> id_time.txt
+
+### BUILD FROH TABLE
+awk '{print $1, $2}' roh_total_bp.txt | sort > froh.txt
+
+
+### FINAL SAFE JOIN
 sort froh.txt > froh.sorted.txt
 sort id_time.txt > id_time.sorted.txt
 
-join froh.sorted.txt id_time.sorted.txt > froh_time.txt
+join -1 1 -2 1 froh.sorted.txt id_time.sorted.txt > froh_time.txt
 
-### SUMMARIZE OLD AND NEW FROH DATA
+### QUALITY CHECK
+echo "FROH samples:" $(wc -l < froh.txt)
+echo "METADATA samples:" $(wc -l < id_time.txt)
+echo "JOINED samples:" $(wc -l < froh_time.txt)
+
+
+### POPULATION SUMMARY (OLD vs NEW)
 awk '{
-  g=$4
-  v=$2
-  sum[g]+=v
-  sumsq[g]+=v*v
-  n[g]++
+  group=$4
+  val=$2
+
+  sum[group]+=val
+  sumsq[group]+=val*val
+  n[group]++
 }
 END {
   for (g in sum) {
@@ -44,5 +76,5 @@ END {
   }
 }' froh_time.txt > froh_time_summary.txt
 
-### DOWNLOAD RESULT
+### DOWNLOAD RESULT 
 scp porr1330@khaleen.csumb.edu:/home/porr1330/bcftools_work/froh_time_summary.txt C:/Users/Owner/Downloads/SP26/BARR/BUOW
