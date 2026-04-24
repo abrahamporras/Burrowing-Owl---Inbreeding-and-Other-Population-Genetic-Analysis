@@ -43,3 +43,6 @@ END {
     print g, n[g], mean, sd
   }
 }' froh_time.txt > froh_time_summary.txt
+
+### DOWNLOAD RESULT
+scp porr1330@khaleen.csumb.edu:/home/porr1330/bcftools_work/froh_time_summary.txt C:/Users/Owner/Downloads/SP26/BARR/BUOW
