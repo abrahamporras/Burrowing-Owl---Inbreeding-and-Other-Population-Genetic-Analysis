@@ -362,3 +362,317 @@ porr1330@khaleen.csumb.edu's password:
 PCA_OVERLAY.pdf                                                                                                   100%   22KB 225.8KB/s   00:00
 PS C:\Users\Owner>
 
+
+##############################
+#GOING BACK TO CHANGE DISPLAY OF PCA PLOTS
+##############################
+conda activate pca_plot
+nano pca_plot.py
+
+###IN NANO###
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.patches import Ellipse
+from matplotlib.lines import Line2D
+
+# =========================
+# LOAD DATA
+# =========================
+
+df = pd.read_csv("pca_merged.txt", sep=r"\s+", header=None)
+
+# expected structure:
+# 0 = sample ID
+# 2 = PC1
+# 3 = PC2
+# last 2 columns = population + group
+
+df = df.iloc[:, [0,2,3,-2,-1]]
+df.columns = ["id","PC1","PC2","pop","group"]
+
+# =========================
+# COLOR MAP (18 pops)
+# =========================
+
+pops = sorted(df["pop"].unique())
+colors = {pops[i]: plt.cm.tab20(i % 20) for i in range(len(pops))}
+
+# =========================
+# ELLIPSE FUNCTION
+# =========================
+
+def add_ellipse(x, y, ax, color):
+    if len(x) < 3:
+        return
+
+    cov = np.cov(x, y)
+    vals, vecs = np.linalg.eigh(cov)
+
+    order = vals.argsort()[::-1]
+    vals = vals[order]
+    vecs = vecs[:, order]
+
+    theta = np.degrees(np.arctan2(*vecs[:,0][::-1]))
+
+    width, height = 2 * 2 * np.sqrt(vals)  # ~95% CI
+
+    ell = Ellipse(
+        xy=(np.mean(x), np.mean(y)),
+        width=width,
+        height=height,
+        angle=theta,
+        edgecolor=color,
+        facecolor='none',
+        linewidth=1.5,
+        alpha=0.8
+    )
+
+    ax.add_patch(ell)
+
+# =========================
+# OVERLAY PCA PLOT
+# =========================
+
+fig, ax = plt.subplots(figsize=(9,7))
+
+for pop in pops:
+    sub = df[df["pop"] == pop]
+
+    old = sub[sub["group"] == "OLD"]
+    new = sub[sub["group"] == "NEW"]
+
+    # OLD = circles
+    ax.scatter(old["PC1"], old["PC2"],
+               color=colors[pop],
+               marker="o",
+               s=20)
+
+    # NEW = triangles
+    ax.scatter(new["PC1"], new["PC2"],
+               color=colors[pop],
+               marker="^",
+               s=20)
+
+    # ellipse for whole population
+    add_ellipse(sub["PC1"], sub["PC2"], ax, colors[pop])
+
+# =========================
+# LEGENDS
+# =========================
+
+# Shape legend
+shape_legend = [
+    Line2D([0], [0], marker='o', color='black', label='OLD', markersize=8, linestyle='None'),
+    Line2D([0], [0], marker='^', color='black', label='NEW', markersize=8, linestyle='None')
+]
+
+shape_leg = ax.legend(handles=shape_legend,
+                      title="Time group",
+                      loc="upper right")
+
+ax.add_artist(shape_leg)
+
+# Population legend (colors only)
+pop_legend = [
+    Line2D([0], [0],
+           marker='o',
+           color=colors[pop],
+           label=pop,
+           linestyle='None',
+           markersize=6)
+    for pop in pops
+]
+
+ax.legend(handles=pop_legend,
+          title="Population",
+          bbox_to_anchor=(1.05, 1),
+          loc="upper left",
+          fontsize=8)
+
+# =========================
+# LABELS + SAVE
+# =========================
+
+ax.set_title("BUOW PCA — OLD vs NEW with Population Structure")
+ax.set_xlabel("PC1")
+ax.set_ylabel("PC2")
+
+plt.tight_layout()
+plt.savefig("PCA_OVERLAY_ELLIPSES.pdf", dpi=300)
+plt.close()
+
+#SAVE EXIT RUN AND DOWNLOAD
+python pca_plot.py
+
+
+
+######
+#ANOTHER NANO FOR MORE PNGS
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
+
+# ----------------------------
+# LOAD PCA
+# ----------------------------
+pca = pd.read_csv(
+    "pca.eigenvec",
+    sep=r"\s+",
+    header=None
+)
+
+# columns: IID, IID, PC1, PC2, ...
+pca = pca.iloc[:, [0, 2, 3]]
+pca.columns = ["sample", "PC1", "PC2"]
+
+# ----------------------------
+# LOAD METADATA
+# ----------------------------
+meta = pd.read_csv(
+    "pca_meta_final.txt",
+    sep=r"\s+",
+    header=None,
+    names=["sample", "pop", "time"]
+)
+
+df = pd.merge(pca, meta, on="sample")
+
+# ----------------------------
+# POP COLORS (EDIT IF NEEDED)
+# ----------------------------
+pops = sorted(df["pop"].unique())
+colors = plt.cm.tab20(np.linspace(0, 1, len(pops)))
+color_map = dict(zip(pops, colors))
+
+# ----------------------------
+# ELLIPSE FUNCTION
+# ----------------------------
+def draw_ellipse(x, y, ax, color, alpha=0.2):
+    if len(x) < 3:
+        return
+
+    cov = np.cov(x, y)
+    vals, vecs = np.linalg.eigh(cov)
+
+    order = vals.argsort()[::-1]
+    vals = vals[order]
+    vecs = vecs[:, order]
+
+    theta = np.degrees(np.arctan2(*vecs[:, 0][::-1]))
+
+    width, height = 2 * np.sqrt(vals)
+
+    ell = Ellipse(
+        xy=(np.mean(x), np.mean(y)),
+        width=width,
+        height=height,
+        angle=theta,
+        edgecolor=color,
+        facecolor=color,
+        alpha=alpha
+    )
+    ax.add_patch(ell)
+
+# ----------------------------
+# FIGURE 1: OLD ONLY
+# ----------------------------
+fig, ax = plt.subplots()
+
+old = df[df["time"] == "OLD"]
+
+for pop in pops:
+    sub = old[old["pop"] == pop]
+    ax.scatter(sub["PC1"], sub["PC2"], color=color_map[pop], label=pop, s=15)
+    draw_ellipse(sub["PC1"], sub["PC2"], ax, color_map[pop])
+
+ax.set_title("PCA - OLD only")
+ax.set_xlabel("PC1")
+ax.set_ylabel("PC2")
+ax.legend()
+plt.tight_layout()
+plt.savefig("PCA_OLD.png", dpi=300)
+plt.close()
+
+# ----------------------------
+# FIGURE 2: NEW ONLY
+# ----------------------------
+fig, ax = plt.subplots()
+
+new = df[df["time"] == "NEW"]
+
+for pop in pops:
+    sub = new[new["pop"] == pop]
+    ax.scatter(sub["PC1"], sub["PC2"], color=color_map[pop], label=pop, s=15)
+    draw_ellipse(sub["PC1"], sub["PC2"], ax, color_map[pop])
+
+ax.set_title("PCA - NEW only")
+ax.set_xlabel("PC1")
+ax.set_ylabel("PC2")
+ax.legend()
+plt.tight_layout()
+plt.savefig("PCA_NEW.png", dpi=300)
+plt.close()
+
+# ----------------------------
+# FIGURE 3: COMBINED
+# ----------------------------
+fig, ax = plt.subplots()
+
+for pop in pops:
+    sub = df[df["pop"] == pop]
+
+    old_sub = sub[sub["time"] == "OLD"]
+    new_sub = sub[sub["time"] == "NEW"]
+
+    # OLD circles
+    ax.scatter(
+        old_sub["PC1"], old_sub["PC2"],
+        color=color_map[pop],
+        marker="o",
+        s=15,
+        label=f"{pop} OLD"
+    )
+
+    # NEW triangles
+    ax.scatter(
+        new_sub["PC1"], new_sub["PC2"],
+        color=color_map[pop],
+        marker="^",
+        s=15,
+        label=f"{pop} NEW"
+    )
+
+    # ellipses separately
+    draw_ellipse(old_sub["PC1"], old_sub["PC2"], ax, color_map[pop], alpha=0.15)
+    draw_ellipse(new_sub["PC1"], new_sub["PC2"], ax, color_map[pop], alpha=0.15)
+
+ax.set_title("PCA - Combined OLD vs NEW")
+ax.set_xlabel("PC1")
+ax.set_ylabel("PC2")
+
+# cleaner legend (avoid explosion)
+ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=8)
+
+plt.tight_layout()
+plt.savefig("PCA_COMBINED.png", dpi=300)
+plt.close()
+
+print("DONE: PCA plots written")
+
+####END NANO
+#DOWNLOAD
+Connection to khaleen.csumb.edu closed.
+PS C:\Users\Owner> scp porr1330@khaleen.csumb.edu:/home/porr1330/plink_work/pca/PCA_COMBINED.png C:/Users/Owner/Downloads/SP26/BARR/BUOW
+porr1330@khaleen.csumb.edu's password:
+PCA_COMBINED.png                                                                                                  100%  301KB 983.1KB/s   00:00
+PS C:\Users\Owner>
+PS C:\Users\Owner> scp porr1330@khaleen.csumb.edu:/home/porr1330/plink_work/pca/PCA_NEW.png C:/Users/Owner/Downloads/SP26/BARR/BUOW
+porr1330@khaleen.csumb.edu's password:
+PCA_NEW.png                                                                                                       100%  269KB   1.0MB/s   00:00
+PS C:\Users\Owner>
+PS C:\Users\Owner> scp porr1330@khaleen.csumb.edu:/home/porr1330/plink_work/pca/PCA_OLD.png C:/Users/Owner/Downloads/SP26/BARR/BUOW
+porr1330@khaleen.csumb.edu's password:
+PCA_OLD.png                                                                                                       100%  338KB   1.1MB/s   00:00
+
