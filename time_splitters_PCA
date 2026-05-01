@@ -676,3 +676,176 @@ PS C:\Users\Owner> scp porr1330@khaleen.csumb.edu:/home/porr1330/plink_work/pca/
 porr1330@khaleen.csumb.edu's password:
 PCA_OLD.png                                                                                                       100%  338KB   1.1MB/s   00:00
 
+
+
+
+######OKAY ONE LAST TIME
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
+
+# ----------------------------
+# LOAD DATA (same as before)
+# ----------------------------
+pca = pd.read_csv("pca.eigenvec", sep=r"\s+", header=None)
+pca = pca.iloc[:, [0, 2, 3]]
+pca.columns = ["sample", "PC1", "PC2"]
+
+meta = pd.read_csv(
+    "pca_meta_final.txt",
+    sep=r"\s+",
+    header=None,
+    names=["sample", "pop", "time"]
+)
+
+df = pd.merge(pca, meta, on="sample")
+
+pops = sorted(df["pop"].unique())
+colors = plt.cm.tab20(np.linspace(0, 1, len(pops)))
+color_map = dict(zip(pops, colors))
+
+# ----------------------------
+# FIXED AXES (your request)
+# ----------------------------
+X_LIM = (0.009, 0.015)
+Y_LIM = (-0.018, -0.008)
+
+# ----------------------------
+# ELLIPSE FUNCTION
+# ----------------------------
+def draw_ellipse(x, y, ax, color, alpha=0.15):
+    if len(x) < 3:
+        return
+
+    cov = np.cov(x, y)
+    vals, vecs = np.linalg.eigh(cov)
+
+    order = vals.argsort()[::-1]
+    vals = vals[order]
+    vecs = vecs[:, order]
+
+    theta = np.degrees(np.arctan2(*vecs[:, 0][::-1]))
+
+    width, height = 2 * np.sqrt(vals)
+
+    ell = Ellipse(
+        xy=(np.mean(x), np.mean(y)),
+        width=width,
+        height=height,
+        angle=theta,
+        edgecolor=color,
+        facecolor=color,
+        alpha=alpha
+    )
+    ax.add_patch(ell)
+
+# ============================================================
+# FUNCTION TO BUILD CLEAN LEGENDS
+# ============================================================
+
+def build_legend(ax, pops):
+    # fake handles for pop colors
+    pop_handles = [
+        plt.Line2D([0], [0], marker='o', color='w',
+                   markerfacecolor=color_map[p], markersize=8, label=p)
+        for p in pops
+    ]
+
+    shape_handles = [
+        plt.Line2D([0], [0], marker='o', color='black', linestyle='None',
+                   markersize=6, label='OLD'),
+        plt.Line2D([0], [0], marker='^', color='black', linestyle='None',
+                   markersize=6, label='NEW')
+    ]
+
+    leg1 = ax.legend(handles=pop_handles, title="Population",
+                     bbox_to_anchor=(1.05, 1), loc="upper left")
+
+    ax.add_artist(leg1)
+
+    ax.legend(handles=shape_handles, title="Time",
+              bbox_to_anchor=(1.05, 0.5), loc="upper left")
+
+# ============================================================
+# PLOT 1: OLD ONLY
+# ============================================================
+fig, ax = plt.subplots()
+
+old = df[df["time"] == "OLD"]
+
+for pop in pops:
+    sub = old[old["pop"] == pop]
+    ax.scatter(sub["PC1"], sub["PC2"], color=color_map[pop], s=15)
+    draw_ellipse(sub["PC1"], sub["PC2"], ax, color_map[pop])
+
+ax.set_title("PCA - OLD")
+ax.set_xlabel("PC1")
+ax.set_ylabel("PC2")
+ax.set_xlim(X_LIM)
+ax.set_ylim(Y_LIM)
+
+build_legend(ax, pops)
+
+plt.tight_layout()
+plt.savefig("PCA_OLD.png", dpi=300)
+plt.close()
+
+# ============================================================
+# PLOT 2: NEW ONLY
+# ============================================================
+fig, ax = plt.subplots()
+
+new = df[df["time"] == "NEW"]
+
+for pop in pops:
+    sub = new[new["pop"] == pop]
+    ax.scatter(sub["PC1"], sub["PC2"], color=color_map[pop], s=15)
+    draw_ellipse(sub["PC1"], sub["PC2"], ax, color_map[pop])
+
+ax.set_title("PCA - NEW")
+ax.set_xlabel("PC1")
+ax.set_ylabel("PC2")
+ax.set_xlim(X_LIM)
+ax.set_ylim(Y_LIM)
+
+build_legend(ax, pops)
+
+plt.tight_layout()
+plt.savefig("PCA_NEW.png", dpi=300)
+plt.close()
+
+# ============================================================
+# PLOT 3: COMBINED
+# ============================================================
+fig, ax = plt.subplots()
+
+for pop in pops:
+    sub = df[df["pop"] == pop]
+
+    old_sub = sub[sub["time"] == "OLD"]
+    new_sub = sub[sub["time"] == "NEW"]
+
+    ax.scatter(old_sub["PC1"], old_sub["PC2"],
+               color=color_map[pop], marker="o", s=15)
+
+    ax.scatter(new_sub["PC1"], new_sub["PC2"],
+               color=color_map[pop], marker="^", s=15)
+
+    draw_ellipse(old_sub["PC1"], old_sub["PC2"], ax, color_map[pop], alpha=0.12)
+    draw_ellipse(new_sub["PC1"], new_sub["PC2"], ax, color_map[pop], alpha=0.12)
+
+ax.set_title("PCA - Combined")
+ax.set_xlabel("PC1")
+ax.set_ylabel("PC2")
+ax.set_xlim(X_LIM)
+ax.set_ylim(Y_LIM)
+
+build_legend(ax, pops)
+
+plt.tight_layout()
+plt.savefig("PCA_COMBINED.png", dpi=300)
+plt.close()
+
+print("DONE")
+####STOP AND REDOWNLOAD SAME PNG NAMES
