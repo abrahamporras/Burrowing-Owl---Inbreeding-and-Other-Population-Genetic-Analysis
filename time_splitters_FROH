@@ -1,0 +1,4 @@
+#add master file so we can add dates to IDs
+scp C:/Users/Owner/Downloads/SP26/BARR/BUOW/CA_AZ_Vegas.samples.cov.master.csv porr1330@khaleen.csumb.edu:/home/porr1330/bcftools_work
+
+#ssh sign in and cd into directory '/home/porr1330/bcftools_work'
