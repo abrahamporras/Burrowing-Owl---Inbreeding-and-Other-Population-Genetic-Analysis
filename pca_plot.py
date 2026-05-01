@@ -1,148 +1,130 @@
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import ConvexHull
+import numpy as np
 
-# ----------------------------
-# LOAD PCA
-# ----------------------------
-pca = pd.read_csv("pca.eigenvec", sep=r"\s+", header=None)
-pca = pca.iloc[:, [0, 2, 3]]
-pca.columns = ["sample", "PC1", "PC2"]
+# -----------------------
+# LOAD DATA
+# -----------------------
 
-# ----------------------------
-# LOAD METADATA
-# ----------------------------
+pca = pd.read_csv("pca.eigenvec", sep=" ", header=None)
+
 meta = pd.read_csv(
     "pca_meta_final.txt",
-    sep=r"\s+",
-    header=None,
-    names=["sample", "pop", "time"]
+    sep=" ",
+    names=["ID", "POP", "GROUP"]
 )
 
-df = pd.merge(pca, meta, on="sample")
+df = pd.merge(meta, pca, left_on="ID", right_on=0)
 
-pops = sorted(df["pop"].unique())
+df = df[[ "ID", "POP", "GROUP", 2, 3 ]]
+df.columns = ["ID", "POP", "GROUP", "PC1", "PC2"]
 
-colors = plt.cm.tab20(np.linspace(0, 1, len(pops)))
-color_map = dict(zip(pops, colors))
+# -----------------------
+# COLOR MAP (EDIT IF NEEDED)
+# -----------------------
 
-# ----------------------------
-# AXES (YOUR FIXED SCALE)
-# ----------------------------
-X_LIM = (0.009, 0.0115)
-Y_LIM = (-0.018, -0.008)
+pops = sorted(df["POP"].unique())
 
-# ----------------------------
-# CONVEX HULL FUNCTION
-# ----------------------------
-def draw_hull(points, ax, color, alpha=0.25):
-    if len(points) < 3:
-        return
+colors = {
+    pop: plt.cm.tab20(i % 20)
+    for i, pop in enumerate(pops)
+}
 
-    hull = ConvexHull(points)
-    verts = points[hull.vertices]
+# -----------------------
+# PLOTTING FUNCTION
+# -----------------------
 
-    ax.fill(
-        verts[:, 0],
-        verts[:, 1],
-        color=color,
-        alpha=alpha,
-        edgecolor=color,
-        linewidth=1.5
-    )
+def plot_group(group, filename):
 
-# ----------------------------
-# LEGEND (COMBINED ONLY)
-# ----------------------------
-def build_combined_legend(ax):
-    pop_handles = [
-        plt.Line2D([0], [0], marker='s', color='w',
-                   markerfacecolor=color_map[p], markersize=8, label=p)
-        for p in pops
-    ]
+    fig, ax = plt.subplots(figsize=(8,6))
 
-    time_handles = [
-        plt.Line2D([0], [0], marker='o', color='black',
-                   linestyle='None', markersize=6, label='OLD'),
-        plt.Line2D([0], [0], marker='^', color='black',
-                   linestyle='None', markersize=6, label='NEW')
-    ]
+    sub = df[df["GROUP"] == group]
 
-    leg1 = ax.legend(handles=pop_handles, title="Population",
-                     bbox_to_anchor=(1.05, 1), loc="upper left")
+    for pop in pops:
+        d = sub[sub["POP"] == pop]
 
-    ax.add_artist(leg1)
+        if len(d) < 3:
+            continue
 
-    ax.legend(handles=time_handles, title="Time",
-              bbox_to_anchor=(1.05, 0.55), loc="upper left")
+        pts = d[["PC1", "PC2"]].values
 
-# ============================================================
-# 1) OLD ONLY
-# ============================================================
-fig, ax = plt.subplots()
+        # scatter points
+        marker = "o" if group == "OLD" else "^"
+        ax.scatter(
+            pts[:,0], pts[:,1],
+            color=colors[pop],
+            label=pop,
+            alpha=0.7,
+            marker=marker
+        )
 
-old_df = df[df["time"] == "OLD"]
+        # convex hull (population boundary)
+        hull = ConvexHull(pts)
+        hull_pts = pts[hull.vertices]
 
-for pop in pops:
-    sub = old_df[old_df["pop"] == pop][["PC1", "PC2"]].values
-    draw_hull(sub, ax, color_map[pop])
+        ax.fill(
+            hull_pts[:,0],
+            hull_pts[:,1],
+            color=colors[pop],
+            alpha=0.15
+        )
 
-ax.set_title("PCA - OLD only")
+    ax.set_title(f"PCA - {group}")
+    ax.set_xlabel("PC1")
+    ax.set_ylabel("PC2")
+
+    ax.set_xlim(df["PC1"].min(), df["PC1"].max())
+    ax.set_ylim(df["PC2"].min(), df["PC2"].max())
+
+    # single clean legend
+    ax.legend(title="Population", bbox_to_anchor=(1.05,1), loc="upper left")
+
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.close()
+
+
+# -----------------------
+# RUN ALL 3 PLOTS
+# -----------------------
+
+plot_group("OLD", "PCA_OLD.pdf")
+plot_group("NEW", "PCA_NEW.pdf")
+
+# OVERLAY
+fig, ax = plt.subplots(figsize=(8,6))
+
+for group, marker in [("OLD","o"), ("NEW","^")]:
+
+    sub = df[df["GROUP"] == group]
+
+    for pop in pops:
+        d = sub[sub["POP"] == pop]
+
+        if len(d) < 3:
+            continue
+
+        pts = d[["PC1", "PC2"]].values
+
+        ax.scatter(
+            pts[:,0], pts[:,1],
+            color=colors[pop],
+            marker=marker,
+            alpha=0.6,
+            label=f"{pop}-{group}"
+        )
+
+        hull = ConvexHull(pts)
+        hull_pts = pts[hull.vertices]
+
+        ax.plot(hull_pts[:,0], hull_pts[:,1], color=colors[pop], alpha=0.2)
+
+ax.set_title("PCA - OVERLAY OLD vs NEW")
 ax.set_xlabel("PC1")
 ax.set_ylabel("PC2")
-ax.set_xlim(X_LIM)
-ax.set_ylim(Y_LIM)
 
+ax.legend(bbox_to_anchor=(1.05,1), loc="upper left")
 plt.tight_layout()
-plt.savefig("PCA_OLD.pdf")
+plt.savefig("PCA_OVERLAY.pdf")
 plt.close()
-
-# ============================================================
-# 2) NEW ONLY
-# ============================================================
-fig, ax = plt.subplots()
-
-new_df = df[df["time"] == "NEW"]
-
-for pop in pops:
-    sub = new_df[new_df["pop"] == pop][["PC1", "PC2"]].values
-    draw_hull(sub, ax, color_map[pop])
-
-ax.set_title("PCA - NEW only")
-ax.set_xlabel("PC1")
-ax.set_ylabel("PC2")
-ax.set_xlim(X_LIM)
-ax.set_ylim(Y_LIM)
-
-plt.tight_layout()
-plt.savefig("PCA_NEW.pdf")
-plt.close()
-
-# ============================================================
-# 3) COMBINED OLD vs NEW
-# ============================================================
-fig, ax = plt.subplots()
-
-for pop in pops:
-    sub = df[df["pop"] == pop]
-
-    old = sub[sub["time"] == "OLD"][["PC1", "PC2"]].values
-    new = sub[sub["time"] == "NEW"][["PC1", "PC2"]].values
-
-    draw_hull(old, ax, color_map[pop], alpha=0.18)
-    draw_hull(new, ax, color_map[pop], alpha=0.18)
-
-ax.set_title("PCA - Combined OLD vs NEW")
-ax.set_xlabel("PC1")
-ax.set_ylabel("PC2")
-ax.set_xlim(X_LIM)
-ax.set_ylim(Y_LIM)
-
-build_combined_legend(ax)
-
-plt.tight_layout()
-plt.savefig("PCA_COMBINED.pdf")
-plt.close()
-
-print("DONE: 3 PCA PDF plots generated")
