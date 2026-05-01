@@ -1,4 +1,139 @@
-s
-s
-s
-s
+awk '{print $2, $3}' pca_meta_final.txt | sort | uniq > pop_group.txt
+
+awk '$2=="OLD"{print $1}' pop_group.txt | sort > old_pops.txt
+awk '$2=="NEW"{print $1}' pop_group.txt | sort > new_pops.txt
+
+comm -12 old_pops.txt new_pops.txt > shared_pops.txt
+
+nano pca_shared_plot.py
+
+###NANO
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy.spatial import ConvexHull
+
+# -----------------------
+# LOAD DATA
+# -----------------------
+
+pca = pd.read_csv("pca.eigenvec", sep=" ", header=None)
+
+meta = pd.read_csv(
+    "pca_meta_final.txt",
+    sep=" ",
+    names=["ID", "POP", "GROUP"]
+)
+
+shared = set(open("shared_pops.txt").read().split())
+
+# merge
+df = pd.merge(meta, pca, left_on="ID", right_on=0)
+df = df[["ID", "POP", "GROUP", 2, 3]]
+df.columns = ["ID", "POP", "GROUP", "PC1", "PC2"]
+
+# KEEP ONLY SHARED POPULATIONS
+df = df[df["POP"].isin(shared)]
+
+# -----------------------
+# COLORS
+# -----------------------
+
+pops = sorted(df["POP"].unique())
+
+colors = {
+    pop: plt.cm.tab20(i % 20)
+    for i, pop in enumerate(pops)
+}
+
+# -----------------------
+# FUNCTION
+# -----------------------
+
+def plot(group, fname):
+
+    fig, ax = plt.subplots(figsize=(8,6))
+
+    sub = df[df["GROUP"] == group]
+
+    for pop in pops:
+        d = sub[sub["POP"] == pop]
+        if len(d) < 3:
+            continue
+
+        pts = d[["PC1","PC2"]].values
+
+        marker = "o" if group == "OLD" else "^"
+
+        ax.scatter(
+            pts[:,0], pts[:,1],
+            color=colors[pop],
+            marker=marker,
+            alpha=0.7
+        )
+
+        hull = ConvexHull(pts)
+        hull_pts = pts[hull.vertices]
+
+        ax.fill(
+            hull_pts[:,0],
+            hull_pts[:,1],
+            color=colors[pop],
+            alpha=0.15
+        )
+
+    ax.set_title(f"PCA {group} (shared pops only)")
+    ax.set_xlabel("PC1")
+    ax.set_ylabel("PC2")
+
+    ax.legend(pops, title="Population", bbox_to_anchor=(1.05,1), loc="upper left")
+
+    plt.tight_layout()
+    plt.savefig(fname)
+    plt.close()
+
+
+# -----------------------
+# RUN
+# -----------------------
+
+plot("OLD", "PCA_OLD_SHARED.pdf")
+plot("NEW", "PCA_NEW_SHARED.pdf")
+
+# OVERLAY
+fig, ax = plt.subplots(figsize=(8,6))
+
+for group, marker in [("OLD","o"), ("NEW","^")]:
+
+    sub = df[df["GROUP"] == group]
+
+    for pop in pops:
+        d = sub[sub["POP"] == pop]
+        if len(d) < 3:
+            continue
+
+        pts = d[["PC1","PC2"]].values
+
+        ax.scatter(
+            pts[:,0], pts[:,1],
+            color=colors[pop],
+            marker=marker,
+            alpha=0.6
+        )
+
+        hull = ConvexHull(pts)
+        hull_pts = pts[hull.vertices]
+
+        ax.plot(hull_pts[:,0], hull_pts[:,1], color=colors[pop], alpha=0.25)
+
+ax.set_title("PCA OVERLAY (shared populations only)")
+ax.set_xlabel("PC1")
+ax.set_ylabel("PC2")
+
+ax.legend(pops, bbox_to_anchor=(1.05,1), loc="upper left")
+
+plt.tight_layout()
+plt.savefig("PCA_OVERLAY_SHARED.pdf")
+plt.close()
+
+###SAVE EXIT RUN
+python pca_shared_plot.py
