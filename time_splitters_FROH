@@ -2,3 +2,84 @@
 scp C:/Users/Owner/Downloads/SP26/BARR/BUOW/CA_AZ_Vegas.samples.cov.master.csv porr1330@khaleen.csumb.edu:/home/porr1330/bcftools_work
 
 #ssh sign in and cd into directory '/home/porr1330/bcftools_work'
+
+#build clean metadata map
+
+
+
+### STEP 0 — GROUND TRUTH VCF IDS
+bcftools query -l autosomes.af.vcf.gz | sort > vcf_ids.txt
+
+
+
+### STEP 1 — EXTRACT SAFE METADATA
+awk -F',' 'NR>1 {
+  gsub(/\r/,"",$0)
+
+  id=$1
+  date=$7
+
+  # remove time portion (YYYY/MM/DD 00:00:00)
+  split(date, t, " ")
+  split(t[1], d, "/")
+
+  year=d[1]
+
+  if (year <= 2019) group="OLD"
+  else group="NEW"
+
+  print id, year, group
+}' CA_AZ_Vegas.samples.cov.master.csv | sort > id_time_raw.txt
+
+
+
+### STEP 2 — DEBUG OVERLAP
+cut -d' ' -f1 id_time_raw.txt | sort > meta_ids.txt
+comm -12 vcf_ids.txt meta_ids.txt > shared_ids.txt
+echo "VCF IDS:" $(wc -l < vcf_ids.txt)
+echo "METADATA IDS:" $(wc -l < id_time_raw.txt)
+echo "SHARED IDS:" $(wc -l < shared_ids.txt)
+
+
+### STEP 3 — FILTER TO MATCHING IDS ONLY
+awk 'NR==FNR {a[$1]; next} $1 in a' vcf_ids.txt id_time_raw.txt \
+> id_time.txt
+
+
+### STEP 4 — BUILD FROH TABLE
+awk '{print $1, $2}' roh_total_bp.txt | sort > froh.txt
+
+
+### STEP 5 — FINAL JOIN (SAFE VERSION)
+sort froh.txt > froh.sorted.txt
+sort id_time.txt > id_time.sorted.txt
+join -1 1 -2 1 froh.sorted.txt id_time.sorted.txt > froh_time.txt
+
+
+### STEP 6 — QUALITY CHECK
+echo "FROH samples:" $(wc -l < froh.txt)
+echo "METADATA samples:" $(wc -l < id_time.txt)
+echo "JOINED samples:" $(wc -l < froh_time.txt)
+
+
+### STEP 7 — POPULATION SUMMARY (OLD vs NEW)
+awk '{
+  group=$4
+  val=$2
+
+  sum[group]+=val
+  sumsq[group]+=val*val
+  n[group]++
+}
+END {
+  for (g in sum) {
+    mean=sum[g]/n[g]
+    var=(sumsq[g]/n[g])-(mean*mean)
+    sd=sqrt(var)
+    print g, n[g], mean, sd
+  }
+}' froh_time.txt > froh_time_summary.txt
+
+
+
+
