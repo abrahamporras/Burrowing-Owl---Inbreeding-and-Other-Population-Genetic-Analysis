@@ -1,5 +1,21 @@
 
+### PRELIM SETUP 
+cd /home/porr1330/bcftools_work
+conda activate genome-tools
+
+#run following if no pip
+conda install pip
+
 #download pcangsd into genome-tools environment
+git clone https://github.com/Rosemeis/pcangsd.git
+cd pcangsd
+pip install .
+which pcangsd
+cd ~
+mkdir pcangsd_work
+mv bcftools_work/pcangsd pcangsd_work/
+cd pcangsd_work/pcangsd
+ls
 
 #create PCA metadata file
 awk '{print $1, $3, $4}' froh_loc_time.txt > pca_meta.txt
