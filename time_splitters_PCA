@@ -26,3 +26,339 @@ which angsd
 
 #####DISREGARD PCAngsd. Using PLINK instead
 cd ~/plink_work
+mkdir -p ~/plink_work/pca
+cd ~/plink_work/pca
+
+#making a clean pink dataset for pca
+plink --vcf /home/barr7596/BUOW/BUOW.all.rm_rel1.2mind.biallelic.SNP.maf05.8miss.vcf.gz \
+--double-id \
+--allow-extra-chr \
+--set-missing-var-ids @:# \
+--make-bed \
+--out pca_all
+
+cut -f1 pca_all.bim | sort | uniq | head
+cut -f1 pca_all.bim | sort | uniq | grep NC_134077.1
+
+#REMOVE SEX CHROMOSOME
+awk '$1 != "NC_134077.1" {print $2}' pca_all.bim > keep_snps.txt
+
+#build autosome dataset
+plink --bfile pca_all \
+--allow-extra-chr \
+--extract keep_snps.txt \
+--make-bed \
+--out pca_auto
+
+#ld pruning
+plink --bfile pca_auto \
+--allow-extra-chr \
+--indep-pairwise 50 5 0.2 \
+--out pca_prune
+
+#create pca dataset
+plink --bfile pca_auto \
+--allow-extra-chr \
+--extract pca_prune.prune.in \
+--make-bed \
+--out pca_ready
+
+#run PCA
+plink --bfile pca_ready \
+--allow-extra-chr \
+--pca 10 \
+--out pca
+
+#check
+ls -lh pca.*
+head pca.eigenvec
+wc -l pca_ready.fam
+
+#extract metadata
+awk -F',' 'NR>1 {
+  id=$1
+  pop=$11
+  date=$7
+
+  split(date,t," ")
+  split(t[1],d,"/")
+  year=d[1]
+
+  group = (year <= 2019 ? "OLD" : "NEW")
+
+  print id, pop, group
+}' ~/bcftools_work/CA_AZ_Vegas.samples.cov.master.csv > pca_meta.txt
+
+#change pca format
+awk '{print $2, $3, $4}' pca.eigenvec > pca_scores.txt
+
+#merge pca and metadata
+sort pca_scores.txt > pca_scores.sorted.txt
+sort pca_meta.txt > pca_meta.sorted.txt
+join -1 1 -2 1 pca_scores.sorted.txt pca_meta.sorted.txt > pca_merged.txt
+
+###############
+#RUN PYTHON INTERACTIVELY
+###############
+
+conda install pandas matplotlib -y
+python -c "import pandas, matplotlib; print('OK')"
+
+#gotta make a new environment
+conda create -n pca_plot python=3.10 pandas matplotlib -y
+conda activate pca_plot
+python -c "import pandas, matplotlib; print('OK')"
+
+#create python script
+nano pca_plot.py
+
+###NANO###
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# ---------------------------
+# LOAD PCA OUTPUT
+# ---------------------------
+pca = pd.read_csv("pca.eigenvec", sep=" ", header=None)
+
+pca = pca.iloc[:, :4]
+pca.columns = ["FID", "IID", "PC1", "PC2"]
+
+# ---------------------------
+# LOAD METADATA
+# ---------------------------
+meta = pd.read_csv("pca_meta.txt", sep=" ", header=None)
+meta.columns = ["IID", "POP", "GROUP"]
+
+# ---------------------------
+# MERGE
+# ---------------------------
+df = pd.merge(pca, meta, on="IID")
+
+# ---------------------------
+# COLORS (18 pops)
+# ---------------------------
+pops = sorted(df["POP"].unique())
+colors = {pops[i]: plt.cm.tab20(i % 20) for i in range(len(pops))}
+
+# =====================================================
+# 1) OLD ONLY
+# =====================================================
+old = df[df["GROUP"] == "OLD"]
+
+plt.figure()
+for pop in pops:
+    sub = old[old["POP"] == pop]
+    plt.scatter(sub["PC1"], sub["PC2"], c=[colors[pop]], s=20)
+
+plt.title("PCA - OLD Only")
+plt.tight_layout()
+plt.savefig("pca_old.png", dpi=300)
+plt.close()
+
+# =====================================================
+# 2) NEW ONLY
+# =====================================================
+new = df[df["GROUP"] == "NEW"]
+
+plt.figure()
+for pop in pops:
+    sub = new[new["POP"] == pop]
+    plt.scatter(sub["PC1"], sub["PC2"], c=[colors[pop]], s=20)
+
+plt.title("PCA - NEW Only")
+plt.tight_layout()
+plt.savefig("pca_new.png", dpi=300)
+plt.close()
+
+# =====================================================
+# 3) COMBINED
+# =====================================================
+plt.figure()
+
+for pop in pops:
+    sub = df[df["POP"] == pop]
+
+    old = sub[sub["GROUP"] == "OLD"]
+    new = sub[sub["GROUP"] == "NEW"]
+
+    plt.scatter(old["PC1"], old["PC2"],
+                c=[colors[pop]],
+                marker="o",
+                s=20)
+
+    plt.scatter(new["PC1"], new["PC2"],
+                c=[colors[pop]],
+                marker="^",
+                s=20)
+
+plt.title("PCA - OLD vs NEW")
+plt.tight_layout()
+plt.savefig("pca_combined.png", dpi=300)
+plt.close()
+
+print("DONE: PCA plots generated")
+
+####SAVE EXIT RUN
+python pca_plot.py
+
+#failed to run, have to redo our metadata file
+awk -F',' '
+NR>1 {
+  gsub(/\r/,"",$0)
+
+  id=$1
+  date=$7
+  loc=$11
+
+  # remove quotes
+  gsub(/"/,"",loc)
+
+  # convert anything weird into underscores
+  gsub(/;/,"_",loc)
+  gsub(/ /,"_",loc)
+
+  # fix weird trailing artifacts
+  gsub(/_+/, "_", loc)
+  gsub(/^_|_$/, "", loc)
+
+  split(date, t, " ")
+  split(t[1], d, "/")
+  year=d[1]
+
+  group = (year <= 2019 ? "OLD" : "NEW")
+
+  print id, loc, group
+}' ~/bcftools_work/CA_AZ_Vegas.samples.cov.master.csv > pca_meta_clean.txt
+
+#clean more
+awk '{
+  gsub(/"/,"")          # remove quotes
+  gsub(/; /,"_")        # fix semicolon + space issue
+  gsub(/ /,"_",$2)      # ensure single-token population names
+  print $1, $2, $3
+}' pca_meta.txt > pca_meta_clean.txt
+
+awk 'NF==3' pca_meta_clean.txt > pca_meta_final.txt
+
+awk 'NR==FNR {a[$1]=$2" "$3; next} ($1 in a) {print $0, a[$1]}' \
+pca_meta_final.txt pca.eigenvec > pca_merged.txt
+
+#now edit python script again
+nano pca_plot.py
+
+###IN NANO###
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# =========================
+# LOAD DATA
+# =========================
+
+df = pd.read_csv("pca_merged.txt", sep=r"\s+", header=None)
+
+# expected structure:
+# 0 = ID
+# 2 = PC1
+# 3 = PC2
+# last 2 columns = pop + group
+
+df = df.iloc[:, [0,2,3,-2,-1]]
+df.columns = ["id","PC1","PC2","pop","group"]
+
+# =========================
+# COLOR MAP (18 pops)
+# =========================
+
+pops = sorted(df["pop"].unique())
+colors = {pops[i]: plt.cm.tab20(i % 20) for i in range(len(pops))}
+
+# =========================
+# FIGURE 1 — OLD
+# =========================
+
+old = df[df["group"] == "OLD"]
+
+plt.figure(figsize=(7,6))
+for pop in pops:
+    sub = old[old["pop"] == pop]
+    plt.scatter(sub["PC1"], sub["PC2"], color=colors[pop], s=20)
+
+plt.title("PCA — OLD individuals")
+plt.xlabel("PC1")
+plt.ylabel("PC2")
+plt.tight_layout()
+plt.savefig("PCA_OLD.pdf")
+plt.close()
+
+# =========================
+# FIGURE 2 — NEW
+# =========================
+
+new = df[df["group"] == "NEW"]
+
+plt.figure(figsize=(7,6))
+for pop in pops:
+    sub = new[new["pop"] == pop]
+    plt.scatter(sub["PC1"], sub["PC2"], color=colors[pop], s=20)
+
+plt.title("PCA — NEW individuals")
+plt.xlabel("PC1")
+plt.ylabel("PC2")
+plt.tight_layout()
+plt.savefig("PCA_NEW.pdf")
+plt.close()
+
+# =========================
+# FIGURE 3 — OVERLAY
+# =========================
+
+plt.figure(figsize=(8,6))
+
+for pop in pops:
+    sub = df[df["pop"] == pop]
+
+    old = sub[sub["group"] == "OLD"]
+    new = sub[sub["group"] == "NEW"]
+
+    plt.scatter(old["PC1"], old["PC2"],
+                color=colors[pop],
+                marker="o",
+                s=20)
+
+    plt.scatter(new["PC1"], new["PC2"],
+                color=colors[pop],
+                marker="^",
+                s=20)
+
+plt.title("PCA — OLD vs NEW")
+plt.xlabel("PC1")
+plt.ylabel("PC2")
+plt.tight_layout()
+plt.savefig("PCA_OVERLAY.pdf")
+plt.close()
+
+###SAVE EXIT RUN
+python pca_plot.py
+
+
+(pca_plot) -bash-4.4$ exit
+logout
+Connection to khaleen.csumb.edu closed.
+PS C:\Users\Owner>
+PS C:\Users\Owner>
+PS C:\Users\Owner>
+PS C:\Users\Owner> scp porr1330@khaleen.csumb.edu:/home/porr1330/plink_work/pca/PCA_NEW.pdf C:/Users/Owner/Downloads/SP26/BARR/BUOW
+porr1330@khaleen.csumb.edu's password:
+PCA_NEW.pdf                                                                                                       100%   15KB 152.3KB/s   00:00
+PS C:\Users\Owner>
+PS C:\Users\Owner>
+PS C:\Users\Owner> scp porr1330@khaleen.csumb.edu:/home/porr1330/plink_work/pca/PCA_OLD.pdf C:/Users/Owner/Downloads/SP26/BARR/BUOW
+porr1330@khaleen.csumb.edu's password:
+PCA_OLD.pdf                                                                                                       100%   20KB 209.1KB/s   00:00
+PS C:\Users\Owner> scp porr1330@khaleen.csumb.edu:/home/porr1330/plink_work/pca/PCA_OVERLAY.pdf C:/Users/Owner/Downloads/SP26/BARR/BUOW
+porr1330@khaleen.csumb.edu's password:
+PCA_OVERLAY.pdf                                                                                                   100%   22KB 225.8KB/s   00:00
+PS C:\Users\Owner>
+
