@@ -11,31 +11,32 @@ nano pca_shared_plot.py
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.spatial import ConvexHull
+from matplotlib.lines import Line2D
 
 # -----------------------
 # LOAD DATA
 # -----------------------
 
-pca = pd.read_csv("pca.eigenvec", sep=" ", header=None)
+pca = pd.read_csv("pca.eigenvec", sep=r"\s+", header=None)
 
 meta = pd.read_csv(
     "pca_meta_final.txt",
-    sep=" ",
+    sep=r"\s+",
     names=["ID", "POP", "GROUP"]
 )
 
 shared = set(open("shared_pops.txt").read().split())
 
-# merge
 df = pd.merge(meta, pca, left_on="ID", right_on=0)
-df = df[["ID", "POP", "GROUP", 2, 3]]
+
+df = df[[0, "POP", "GROUP", 2, 3]]
 df.columns = ["ID", "POP", "GROUP", "PC1", "PC2"]
 
-# KEEP ONLY SHARED POPULATIONS
+# keep only shared pops
 df = df[df["POP"].isin(shared)]
 
 # -----------------------
-# COLORS
+# COLOR MAP
 # -----------------------
 
 pops = sorted(df["POP"].unique())
@@ -46,24 +47,32 @@ colors = {
 }
 
 # -----------------------
-# FUNCTION
+# GLOBAL AXIS LIMITS (consistent across plots)
 # -----------------------
 
-def plot(group, fname):
+x_min, x_max = df["PC1"].min(), df["PC1"].max()
+y_min, y_max = df["PC2"].min(), df["PC2"].max()
+
+# -----------------------
+# PLOT FUNCTION
+# -----------------------
+
+def plot(group, filename):
 
     fig, ax = plt.subplots(figsize=(8,6))
 
     sub = df[df["GROUP"] == group]
+
+    marker = "o" if group == "OLD" else "^"
 
     for pop in pops:
         d = sub[sub["POP"] == pop]
         if len(d) < 3:
             continue
 
-        pts = d[["PC1","PC2"]].values
+        pts = d[["PC1", "PC2"]].values
 
-        marker = "o" if group == "OLD" else "^"
-
+        # scatter points
         ax.scatter(
             pts[:,0], pts[:,1],
             color=colors[pop],
@@ -71,6 +80,7 @@ def plot(group, fname):
             alpha=0.7
         )
 
+        # convex hull (NOT in legend)
         hull = ConvexHull(pts)
         hull_pts = pts[hull.vertices]
 
@@ -85,21 +95,66 @@ def plot(group, fname):
     ax.set_xlabel("PC1")
     ax.set_ylabel("PC2")
 
-    ax.legend(pops, title="Population", bbox_to_anchor=(1.05,1), loc="upper left")
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+
+    # -----------------------
+    # CLEAN LEGENDS
+    # -----------------------
+
+    pop_handles = [
+        Line2D([0], [0],
+               marker='o',
+               color='w',
+               label=pop,
+               markerfacecolor=colors[pop],
+               markersize=8)
+        for pop in pops
+    ]
+
+    shape_handles = [
+        Line2D([0], [0],
+               marker='o',
+               color='black',
+               linestyle='None',
+               label='OLD',
+               markersize=8),
+        Line2D([0], [0],
+               marker='^',
+               color='black',
+               linestyle='None',
+               label='NEW',
+               markersize=8)
+    ]
+
+    leg1 = ax.legend(handles=pop_handles,
+                     title="Population",
+                     bbox_to_anchor=(1.05, 1),
+                     loc="upper left")
+
+    ax.add_artist(leg1)
+
+    ax.legend(handles=shape_handles,
+              title="Group",
+              bbox_to_anchor=(1.05, 0.55),
+              loc="upper left")
 
     plt.tight_layout()
-    plt.savefig(fname)
+    plt.savefig(filename)
     plt.close()
 
 
 # -----------------------
-# RUN
+# RUN OLD / NEW
 # -----------------------
 
 plot("OLD", "PCA_OLD_SHARED.pdf")
 plot("NEW", "PCA_NEW_SHARED.pdf")
 
+# -----------------------
 # OVERLAY
+# -----------------------
+
 fig, ax = plt.subplots(figsize=(8,6))
 
 for group, marker in [("OLD","o"), ("NEW","^")]:
@@ -111,7 +166,7 @@ for group, marker in [("OLD","o"), ("NEW","^")]:
         if len(d) < 3:
             continue
 
-        pts = d[["PC1","PC2"]].values
+        pts = d[["PC1", "PC2"]].values
 
         ax.scatter(
             pts[:,0], pts[:,1],
@@ -123,13 +178,54 @@ for group, marker in [("OLD","o"), ("NEW","^")]:
         hull = ConvexHull(pts)
         hull_pts = pts[hull.vertices]
 
-        ax.plot(hull_pts[:,0], hull_pts[:,1], color=colors[pop], alpha=0.25)
+        ax.plot(hull_pts[:,0], hull_pts[:,1],
+                color=colors[pop],
+                alpha=0.2)
 
-ax.set_title("PCA OVERLAY (shared populations only)")
+ax.set_title("PCA OVERLAY (shared pops only)")
 ax.set_xlabel("PC1")
 ax.set_ylabel("PC2")
 
-ax.legend(pops, bbox_to_anchor=(1.05,1), loc="upper left")
+ax.set_xlim(x_min, x_max)
+ax.set_ylim(y_min, y_max)
+
+# CLEAN OVERLAY LEGEND
+pop_handles = [
+    Line2D([0], [0],
+           marker='o',
+           color='w',
+           label=pop,
+           markerfacecolor=colors[pop],
+           markersize=8)
+    for pop in pops
+]
+
+shape_handles = [
+    Line2D([0], [0],
+           marker='o',
+           color='black',
+           linestyle='None',
+           label='OLD',
+           markersize=8),
+    Line2D([0], [0],
+           marker='^',
+           color='black',
+           linestyle='None',
+           label='NEW',
+           markersize=8)
+]
+
+leg1 = ax.legend(handles=pop_handles,
+                 title="Population",
+                 bbox_to_anchor=(1.05, 1),
+                 loc="upper left")
+
+ax.add_artist(leg1)
+
+ax.legend(handles=shape_handles,
+          title="Group",
+          bbox_to_anchor=(1.05, 0.55),
+          loc="upper left")
 
 plt.tight_layout()
 plt.savefig("PCA_OVERLAY_SHARED.pdf")
@@ -137,3 +233,7 @@ plt.close()
 
 ###SAVE EXIT RUN
 python pca_shared_plot.py
+
+-rw-r--r-- 1 porr1330 domain users  21K May  1 15:42 PCA_NEW_SHARED.pdf
+-rw-r--r-- 1 porr1330 domain users  22K May  1 15:42 PCA_OLD_SHARED.pdf
+-rw-r--r-- 1 porr1330 domain users  25K May  1 15:42 PCA_OVERLAY_SHARED.pdf
