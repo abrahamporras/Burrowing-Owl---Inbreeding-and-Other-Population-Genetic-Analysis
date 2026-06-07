@@ -76,3 +76,8 @@ END{
 cp froh_location_oldnew_summary.txt \
    froh_location_oldnew_summary_CORRECTED.txt
 
+exit
+
+scp porr1330@khaleen.csumb.edu:/home/porr1330/bcftools_work/froh_location_oldnew_summary.txt C:/Users/Owner/Downloads/SP26/BARR/BUOW
+
+scp porr1330@khaleen.csumb.edu:/home/porr1330/bcftools_work/froh_location_oldnew_summary_CORRECTED.txt C:/Users/Owner/Downloads/SP26/BARR/BUOW
