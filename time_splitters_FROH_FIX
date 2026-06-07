@@ -1,0 +1,78 @@
+# ISSUE DISCOVERED (June 2026):
+# The file "froh.txt" was not actually containing normalized FROH values.
+# Although the pipeline includes the correct normalization step:
+#
+#   awk -v G=$GENOME_BP '{print $1, $2/G}' roh_total_bp.txt > froh.txt
+#
+# inspection showed that froh.txt contained the same raw ROH lengths
+# (bp) as roh_total_bp.txt rather than proportions between 0 and 1.
+#
+# Example:
+#   roh_total_bp.txt : 109430863 53609578
+#   froh.txt         : 109430863 53609578   <-- incorrect
+#   expected FROH    : 109430863 0.0423925
+#
+# As a result, downstream population summaries reported mean total ROH
+# length (bp) rather than mean FROH, producing values in the tens of
+# millions instead of expected FROH values (~0.01–0.06).
+#
+# Fix:
+# Recreate froh.txt from roh_total_bp.txt using the autosomal genome
+# length stored in genome_bp.txt, then rerun all downstream joins and
+# summary statistics.
+
+#have to run because froh wasn't actually normalized
+awk -v G=1264599782 '{print $1, $2/G}' roh_total_bp.txt > froh_new.txt
+head froh_new.txt
+
+#preserve and backup old froh.txt
+mv froh.txt froh_BAD_rawbp.txt
+
+#create correct froh file
+GENOME_BP=$(cat genome_bp.txt)
+awk -v G=$GENOME_BP '{print $1, $2/G}' roh_total_bp.txt > froh.txt
+
+#rebuild sorted files
+sort froh.txt > froh.sorted.txt
+sort metadata_clean.txt > metadata.sorted.txt
+
+#recreate join
+join -1 1 -2 1 froh.sorted.txt metadata.sorted.txt > froh_loc_time.txt
+
+#check join size, make sure no samples lost
+echo "FROH rows:" $(wc -l < froh.sorted.txt)
+echo "Metadata rows:" $(wc -l < metadata.sorted.txt)
+echo "Joined rows:" $(wc -l < froh_loc_time.txt)
+
+#inspect joined data
+head froh_loc_time.txt
+
+#recompute location + time summaries
+awk '{
+    loc=$3
+    grp=$4
+    val=$2
+
+    key=loc FS grp
+
+    sum[key]+=val
+    sumsq[key]+=val*val
+    n[key]++
+}
+END{
+    for(k in sum){
+        mean=sum[k]/n[k]
+        var=(sumsq[k]/n[k])-(mean*mean)
+        if(var < 0) var=0
+        sd=sqrt(var)
+
+        split(k,a,FS)
+
+        print a[1], a[2], n[k], mean, sd
+    }
+}' froh_loc_time.txt | sort > froh_location_oldnew_summary.txt
+
+#save corrected output
+cp froh_location_oldnew_summary.txt \
+   froh_location_oldnew_summary_CORRECTED.txt
+
