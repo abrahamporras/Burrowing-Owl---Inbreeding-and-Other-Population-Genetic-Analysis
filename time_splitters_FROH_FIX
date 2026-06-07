@@ -1,25 +1,12 @@
 # ISSUE DISCOVERED (June 2026):
-# The file "froh.txt" was not actually containing normalized FROH values.
-# Although the pipeline includes the correct normalization step:
-#
-#   awk -v G=$GENOME_BP '{print $1, $2/G}' roh_total_bp.txt > froh.txt
-#
-# inspection showed that froh.txt contained the same raw ROH lengths
-# (bp) as roh_total_bp.txt rather than proportions between 0 and 1.
-#
-# Example:
-#   roh_total_bp.txt : 109430863 53609578
-#   froh.txt         : 109430863 53609578   <-- incorrect
-#   expected FROH    : 109430863 0.0423925
-#
-# As a result, downstream population summaries reported mean total ROH
-# length (bp) rather than mean FROH, producing values in the tens of
-# millions instead of expected FROH values (~0.01–0.06).
-#
-# Fix:
-# Recreate froh.txt from roh_total_bp.txt using the autosomal genome
-# length stored in genome_bp.txt, then rerun all downstream joins and
-# summary statistics.
+#"froh.txt" was not actually containing normalized FROH values although the pipeline includes the correct normalization step:
+# awk -v G=$GENOME_BP '{print $1, $2/G}' roh_total_bp.txt > froh.txt
+
+#but froh.txt contained the same raw ROH lengths as roh_total_bp.txt rather than proportions between 0 and 1.
+
+#downstream population summaries reported mean total ROH length rather than mean FROH
+
+#recreating froh.txt from roh_total_bp.txt using the auto genome length in genome_bp.txt and rerun all downstream joins and summary stats.
 
 #have to run because froh wasn't actually normalized
 awk -v G=1264599782 '{print $1, $2/G}' roh_total_bp.txt > froh_new.txt
