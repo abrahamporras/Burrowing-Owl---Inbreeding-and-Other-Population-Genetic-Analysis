@@ -1,4 +1,4 @@
-# ISSUE DISCOVERED (June 2026):
+# ISSUE DISCOVERED (June 6 2026):
 #"froh.txt" was not actually containing normalized FROH values although the pipeline includes the correct normalization step:
 # awk -v G=$GENOME_BP '{print $1, $2/G}' roh_total_bp.txt > froh.txt
 
